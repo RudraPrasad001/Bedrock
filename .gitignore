@@ -6,3 +6,4 @@ dist/
 .env
 logs/
 CLAUDE.md
+benchmark_results/

@@ -1,0 +1,203 @@
+{
+  "_comment": "Benchmark tasks. '{ws}' is replaced with the absolute path of a fresh workspace per run. 'script.reasoner' holds the scripted-mode decisions; planner/verifier/summarizer replies default to a generic plan, a passing verdict and a fixed summary. Checks with modes=['live'] inspect the model's answer and are skipped in scripted mode, where the answer is scripted and checking it would be circular.",
+  "tasks": [
+    {
+      "id": "fs-find-by-extension",
+      "category": "filesystem",
+      "instruction": "Find all PDF files in {ws}/Downloads, including subfolders.",
+      "fixture": "standard",
+      "expected": "Downloads/report.pdf and Downloads/nested/old_report.pdf",
+      "checks": [
+        {"type": "observation_paths", "tool": "filesystem.search",
+         "expected": ["Downloads/report.pdf", "Downloads/nested/old_report.pdf"], "modes": ["scripted"]},
+        {"type": "answer_mentions", "tokens": ["report.pdf", "old_report.pdf"], "modes": ["live"]}
+      ],
+      "script": {"reasoner": [
+        {"status": "continue", "reason": "Search Downloads for PDFs.", "step_id": 1,
+         "action": "filesystem.search", "arguments": {"path": "{ws}/Downloads", "pattern": "*.pdf"}},
+        {"status": "complete", "reason": "Found the PDFs.", "answer": "2 PDFs: report.pdf, nested/old_report.pdf"}
+      ]}
+    },
+    {
+      "id": "fs-find-by-size",
+      "category": "filesystem",
+      "instruction": "Find all files larger than 1 MB anywhere in {ws}.",
+      "fixture": "standard",
+      "expected": "Downloads/image.png (1.2 MB) and Downloads/archive.zip (3 MB); Misc/data.csv (600 KB) excluded",
+      "checks": [
+        {"type": "observation_paths", "tool": "filesystem.search",
+         "expected": ["Downloads/image.png", "Downloads/archive.zip"], "modes": ["scripted"]},
+        {"type": "answer_mentions", "tokens": ["image.png", "archive.zip"], "modes": ["live"]}
+      ],
+      "script": {"reasoner": [
+        {"status": "continue", "reason": "Search for files over 1 MB.", "step_id": 1,
+         "action": "filesystem.search", "arguments": {"path": "{ws}", "min_size": 1000000}},
+        {"status": "complete", "reason": "Done.", "answer": "image.png and archive.zip exceed 1 MB"}
+      ]}
+    },
+    {
+      "id": "fs-find-by-date",
+      "category": "filesystem",
+      "instruction": "Which files in {ws}/Downloads (including subfolders) were modified after 2024-01-01?",
+      "fixture": "standard",
+      "expected": "report.pdf, image.png, archive.zip (notes.txt and nested/old_report.pdf are from 2020)",
+      "checks": [
+        {"type": "observation_paths", "tool": "filesystem.search",
+         "expected": ["Downloads/report.pdf", "Downloads/image.png", "Downloads/archive.zip"], "modes": ["scripted"]},
+        {"type": "answer_mentions", "tokens": ["report.pdf", "image.png", "archive.zip"], "modes": ["live"]}
+      ],
+      "script": {"reasoner": [
+        {"status": "continue", "reason": "Filter Downloads by modification date.", "step_id": 1,
+         "action": "filesystem.search", "arguments": {"path": "{ws}/Downloads", "modified_after": "2024-01-01"}},
+        {"status": "complete", "reason": "Done.", "answer": "report.pdf, image.png, archive.zip"}
+      ]}
+    },
+    {
+      "id": "fs-find-duplicates",
+      "category": "filesystem",
+      "instruction": "Find duplicate files (identical content) in {ws}/Documents.",
+      "fixture": "standard",
+      "expected": "duplicate.txt and duplicate_copy.txt; near_duplicate.txt has the same size but different content",
+      "checks": [
+        {"type": "observation_paths", "tool": "filesystem.duplicates",
+         "expected": ["Documents/duplicate.txt", "Documents/duplicate_copy.txt"], "modes": ["scripted"]},
+        {"type": "answer_mentions", "tokens": ["duplicate.txt", "duplicate_copy.txt"], "modes": ["live"]}
+      ],
+      "script": {"reasoner": [
+        {"status": "continue", "reason": "Hash files in Documents.", "step_id": 1,
+         "action": "filesystem.duplicates", "arguments": {"path": "{ws}/Documents"}},
+        {"status": "complete", "reason": "Done.", "answer": "duplicate.txt and duplicate_copy.txt are identical"}
+      ]}
+    },
+    {
+      "id": "fs-largest-files",
+      "category": "filesystem",
+      "instruction": "List the 3 largest files in {ws}.",
+      "fixture": "standard",
+      "expected": "archive.zip, image.png, data.csv",
+      "checks": [
+        {"type": "observation_paths", "tool": "filesystem.search",
+         "expected": ["Downloads/archive.zip", "Downloads/image.png", "Misc/data.csv"], "modes": ["scripted"]},
+        {"type": "answer_mentions", "tokens": ["archive.zip", "image.png", "data.csv"], "modes": ["live"]}
+      ],
+      "script": {"reasoner": [
+        {"status": "continue", "reason": "Sort all files by size.", "step_id": 1,
+         "action": "filesystem.search",
+         "arguments": {"path": "{ws}", "sort_by": "size", "descending": true, "max_results": 3}},
+        {"status": "complete", "reason": "Done.", "answer": "archive.zip, image.png, data.csv"}
+      ]}
+    },
+    {
+      "id": "content-markdown-keyword",
+      "category": "content",
+      "instruction": "Which markdown files in {ws}/Documents mention Kubernetes in their content?",
+      "fixture": "standard",
+      "expected": "kubernetes.md and cluster-notes.md (docker.md does not mention it)",
+      "checks": [
+        {"type": "observation_paths", "tool": "shell.run",
+         "expected": ["Documents/kubernetes.md", "Documents/cluster-notes.md"], "modes": ["scripted"]},
+        {"type": "answer_mentions", "tokens": ["kubernetes.md", "cluster-notes.md"], "modes": ["live"]}
+      ],
+      "script": {"reasoner": [
+        {"status": "continue", "reason": "Search markdown contents case-insensitively.", "step_id": 1,
+         "action": "shell.run", "arguments": {"command": "grep -ril kubernetes {ws}/Documents --include=*.md"}},
+        {"status": "complete", "reason": "Done.", "answer": "kubernetes.md, cluster-notes.md"}
+      ]}
+    },
+    {
+      "id": "content-read-pdf",
+      "category": "content",
+      "instruction": "Read {ws}/Downloads/report.pdf and tell me by how many percent revenue grew.",
+      "fixture": "standard",
+      "expected": "12 percent",
+      "checks": [
+        {"type": "observation_contains", "tool": "filesystem.read",
+         "text": "Quarterly revenue grew 12 percent", "modes": ["scripted"]},
+        {"type": "answer_mentions", "tokens": ["12"], "modes": ["live"]}
+      ],
+      "script": {"reasoner": [
+        {"status": "continue", "reason": "Read the PDF.", "step_id": 1,
+         "action": "filesystem.read", "arguments": {"path": "{ws}/Downloads/report.pdf"}},
+        {"status": "complete", "reason": "Done.", "answer": "Revenue grew 12 percent."}
+      ]}
+    },
+    {
+      "id": "gen-markdown-summary",
+      "category": "generation",
+      "instruction": "Read the markdown notes in {ws}/Documents and write a consolidated summary to {ws}/Documents/summary.md.",
+      "fixture": "standard",
+      "expected": "Documents/summary.md exists and covers Docker and Kubernetes; source notes unchanged",
+      "checks": [
+        {"type": "file_contains", "path": "Documents/summary.md", "all": ["docker", "kubernetes"]},
+        {"type": "unchanged", "paths": ["Documents/docker.md", "Documents/kubernetes.md", "Documents/cluster-notes.md"]}
+      ],
+      "script": {"reasoner": [
+        {"status": "continue", "reason": "Find the notes.", "step_id": 1,
+         "action": "filesystem.search", "arguments": {"path": "{ws}/Documents", "pattern": "*.md"}},
+        {"status": "continue", "reason": "Read docker.md.", "step_id": 2,
+         "action": "filesystem.read", "arguments": {"path": "{ws}/Documents/docker.md"}},
+        {"status": "continue", "reason": "Read kubernetes.md.", "step_id": 2,
+         "action": "filesystem.read", "arguments": {"path": "{ws}/Documents/kubernetes.md"}},
+        {"status": "continue", "reason": "Read cluster-notes.md.", "step_id": 2,
+         "action": "filesystem.read", "arguments": {"path": "{ws}/Documents/cluster-notes.md"}},
+        {"status": "continue", "reason": "Write the summary.", "step_id": 3,
+         "action": "filesystem.write", "arguments": {"path": "{ws}/Documents/summary.md",
+          "content": "# Notes summary\n\n## Docker\nContainers; docker compose for multi-container apps.\n\n## Kubernetes\nOrchestrates containers (pods, deployments, services). Staging runs Kubernetes 1.30.\n"}},
+        {"status": "complete", "reason": "Summary written.", "answer": "Created Documents/summary.md"}
+      ]}
+    },
+    {
+      "id": "org-by-extension",
+      "category": "organization",
+      "instruction": "Organize the files directly inside {ws}/Downloads into subfolders by file extension. Leave existing subfolders alone.",
+      "fixture": "standard",
+      "expected": "report.pdf, notes.txt, image.png, archive.zip each moved into a per-extension subfolder with content intact; nested/old_report.pdf untouched",
+      "checks": [
+        {"type": "organized_by_extension", "dir": "Downloads",
+         "files": ["Downloads/report.pdf", "Downloads/notes.txt", "Downloads/image.png", "Downloads/archive.zip"]},
+        {"type": "unchanged", "paths": ["Downloads/nested/old_report.pdf"]}
+      ],
+      "script": {"reasoner": [
+        {"status": "continue", "reason": "Move the PDF.", "step_id": 1, "action": "filesystem.move",
+         "arguments": {"source": "{ws}/Downloads/report.pdf", "destination": "{ws}/Downloads/pdf/"}},
+        {"status": "continue", "reason": "Move the text file.", "step_id": 1, "action": "filesystem.move",
+         "arguments": {"source": "{ws}/Downloads/notes.txt", "destination": "{ws}/Downloads/txt/"}},
+        {"status": "continue", "reason": "Move the image.", "step_id": 1, "action": "filesystem.move",
+         "arguments": {"source": "{ws}/Downloads/image.png", "destination": "{ws}/Downloads/png/"}},
+        {"status": "continue", "reason": "Move the archive.", "step_id": 1, "action": "filesystem.move",
+         "arguments": {"source": "{ws}/Downloads/archive.zip", "destination": "{ws}/Downloads/zip/"}},
+        {"status": "complete", "reason": "Organized.", "answer": "Moved 4 files into pdf/, txt/, png/, zip/"}
+      ]}
+    },
+    {
+      "id": "sys-disk-usage",
+      "category": "system",
+      "instruction": "How much free disk space is there on the filesystem containing {ws}?",
+      "fixture": "standard",
+      "expected": "A successful disk usage inspection",
+      "checks": [
+        {"type": "tool_succeeded", "tools": ["system.disk_usage", "shell.run"]}
+      ],
+      "script": {"reasoner": [
+        {"status": "continue", "reason": "Check disk usage.", "step_id": 1,
+         "action": "system.disk_usage", "arguments": {"path": "{ws}"}},
+        {"status": "complete", "reason": "Done.", "answer": "Reported free space."}
+      ]}
+    },
+    {
+      "id": "sys-top-processes",
+      "category": "system",
+      "instruction": "Which 5 processes are using the most memory right now?",
+      "fixture": "standard",
+      "expected": "A successful process inspection",
+      "checks": [
+        {"type": "tool_succeeded", "tools": ["system.processes", "shell.run"]}
+      ],
+      "script": {"reasoner": [
+        {"status": "continue", "reason": "List processes by memory.", "step_id": 1,
+         "action": "system.processes", "arguments": {"sort_by": "memory", "limit": 5}},
+        {"status": "complete", "reason": "Done.", "answer": "Listed the top 5 processes."}
+      ]}
+    }
+  ]
+}

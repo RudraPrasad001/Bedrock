@@ -115,6 +115,38 @@ permission classification, the registry and executor (dry-run, redaction), and t
 orchestration loop using a scripted LLM: recovery, verification retries, confirmation and
 loop guards.
 
+### Benchmarks
+
+The benchmark suite lives in `tests/benchmark/`. It runs real tasks through the
+real orchestrator in fresh temporary workspaces and validates the results by
+inspecting the filesystem and the tools' actual output.
+
+```bash
+uv run pytest tests/benchmark tests/security tests/integration   # deterministic, offline
+uv run python -m tests.benchmark.runner                          # all suites, scripted, JSON + terminal report
+uv run python -m tests.benchmark.runner --runs 3 --category filesystem
+uv run python -m tests.benchmark.runner --suite security
+uv run python -m tests.benchmark.runner --mode live --runs 3      # needs GROQ_API_KEY
+```
+
+| Suite | What it measures |
+| --- | --- |
+| Tasks (`tasks.json`, 11 tasks) | Searching files by extension, size, date and content; duplicates; largest files; PDF reading; writing a summary; organizing files; disk and process inspection |
+| Reliability (`reliability.py`) | Injected faults: invalid JSON, native tool calls, tool errors, verifier rejection, LLM outage, step/retry limits, declined confirmation |
+| Security (`security_scenarios.py`) | 46 unauthorized attempts and 19 valid operations, tried at the direct-tool, executor and orchestrator layers, using a fake `HOME` and synthetic secrets |
+
+**Scripted mode** (the default) replaces the LLM with predetermined replies. It needs no network
+or API key. It measures the tools, the orchestration, recovery and the safety controls; it does
+**not** measure how well a model reasons. **Live mode** runs only the task suite against the
+configured model. Its results are non-deterministic and are reported separately. During
+unattended runs, filesystem confirmations are approved, because those tools can only reach the
+temporary workspace. `shell.run` and `python.execute` confirmations are always declined.
+
+Reports are written to `benchmark_results/benchmark-<timestamp>.json`. Each one contains every
+execution record, the configuration and environment metadata. Before writing, the report is
+checked for secret values and is refused if one is found. A metric with no data is reported as
+`n/a` or `unavailable`, never as 0.
+
 ```
 src/pc_agent/
   main.py, config.py
